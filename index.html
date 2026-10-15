@@ -1,0 +1,1956 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title id="tab-title">CakesV2 // Quantum Bakery</title>
+<link id="tab-icon" rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🎂</text></svg>">
+
+<!-- Realtime WebSockets for The Bakery Cross-Device Network -->
+<script src="https://unpkg.com/mqtt/dist/mqtt.min.js"></script>
+
+<style>
+  :root {
+    --theme-color: #00ffff;
+    --theme-bg: #05010a;
+    --panel-bg: rgba(5, 2, 12, 0.55);
+    --cyan: #00e5ff;
+    --lime: #39ff14;
+    --gold: #ffd700;
+    --orange: #ff6600;
+    --hot-pink: #ff00aa;
+    --electric-blue: #007fff;
+    --magenta: #ff00ff;
+    --bright-green: #32cd32;
+    --neon-red: #ff073a;
+    --stealth-gray: #8892b0;
+  }
+
+  body[data-theme="matrix"] { --theme-color: #39ff14; --theme-bg: #000902; --panel-bg: rgba(0, 18, 5, 0.65); }
+  body[data-theme="synthwave"] { --theme-color: #ff00aa; --theme-bg: #0c0017; --panel-bg: rgba(22, 0, 34, 0.6); }
+  body[data-theme="blackhole"] { --theme-color: #ff7700; --theme-bg: #020205; --panel-bg: rgba(14, 6, 18, 0.6); }
+  body[data-theme="cyberpunk"] { --theme-color: #00e5ff; --theme-bg: #030814; --panel-bg: rgba(2, 14, 32, 0.65); }
+  body[data-theme="hyperspace"] { --theme-color: #9d00ff; --theme-bg: #010008; --panel-bg: rgba(12, 0, 26, 0.65); }
+  body[data-theme="vapor"] { --theme-color: #ff71ce; --theme-bg: #0b001a; --panel-bg: rgba(22, 4, 32, 0.6); }
+  body[data-theme="stealth"] { --theme-color: #8892b0; --theme-bg: #08090d; --panel-bg: rgba(13, 16, 22, 0.75); }
+
+  * { box-sizing: border-box; }
+
+  body {
+    margin: 0;
+    padding: 0;
+    width: 100vw;
+    height: 100vh;
+    font-family: 'Courier New', Courier, monospace;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    background-color: var(--theme-bg);
+    overflow: hidden;
+    color: white;
+    perspective: 1200px;
+    cursor: crosshair;
+    user-select: none;
+    transition: background-color 0.4s ease;
+  }
+
+  body:active { cursor: grabbing; }
+
+  #canvas-bg {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    z-index: 0;
+  }
+
+  .scanlines {
+    position: fixed;
+    top: 0; left: 0; width: 100vw; height: 100vh;
+    background: linear-gradient(to bottom, rgba(255,255,255,0), rgba(255,255,255,0) 50%, rgba(0,0,0,0.18) 50%, rgba(0,0,0,0.18));
+    background-size: 100% 4px;
+    pointer-events: none;
+    z-index: 1;
+  }
+
+  /* Top HUD Bar */
+  .hud-top-bar {
+    position: fixed;
+    top: 14px;
+    left: 20px;
+    right: 20px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    z-index: 20;
+    pointer-events: none;
+  }
+
+  .hud-group {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    pointer-events: auto;
+  }
+
+  .hud-pill {
+    font-size: 11px;
+    letter-spacing: 1.5px;
+    color: rgba(255, 255, 255, 0.7);
+    background: rgba(0, 0, 0, 0.65);
+    padding: 7px 14px;
+    border-radius: 8px;
+    border: 1px solid rgba(255, 255, 255, 0.14);
+    backdrop-filter: blur(12px);
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    transition: all 0.25s ease;
+    cursor: crosshair;
+  }
+
+  .hud-pill:hover {
+    color: #fff;
+    border-color: var(--theme-color);
+    box-shadow: 0 0 14px var(--theme-color);
+    transform: translateY(-1px);
+  }
+
+  .counter-dot {
+    width: 7px;
+    height: 7px;
+    background: var(--theme-color);
+    border-radius: 50%;
+    box-shadow: 0 0 10px var(--theme-color);
+    animation: counterBlink 2s infinite alternate;
+  }
+
+  .counter-val {
+    color: var(--theme-color);
+    font-weight: bold;
+  }
+
+  @keyframes counterBlink {
+    0% { opacity: 0.3; }
+    100% { opacity: 1; }
+  }
+
+  /* Main Glass Panel */
+  .glass-panel {
+    position: relative;
+    z-index: 2;
+    background: var(--panel-bg); 
+    backdrop-filter: blur(20px) saturate(180%);
+    -webkit-backdrop-filter: blur(20px) saturate(180%);
+    border: 1px solid rgba(255, 255, 255, 0.18);
+    border-radius: 18px;
+    padding: 30px 40px;
+    width: 780px;
+    max-width: 92%;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    transition: transform 0.1s ease-out, box-shadow 0.3s ease, background 0.4s ease;
+    transform-style: preserve-3d;
+    box-shadow: 0 35px 70px rgba(0,0,0,0.92), inset 0 0 25px rgba(255,255,255,0.06);
+  }
+
+  .title-wrapper {
+    position: relative;
+    margin: 0 0 16px 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+  }
+
+  .top-warning {
+    margin-top: 10px;
+    font-size: 11px;
+    color: var(--orange);
+    text-align: center;
+    text-transform: uppercase;
+    letter-spacing: 1.5px;
+    text-shadow: 0 0 8px rgba(255, 102, 0, 0.6);
+  }
+
+  h1 {
+    margin: 0;
+    font-weight: 900;
+    letter-spacing: 14px;
+    font-size: 3.8rem; 
+    color: #fff;
+    text-transform: uppercase;
+    text-align: center;
+    text-shadow: 
+      0 0 5px rgba(255,255,255,0.8),
+      0 0 20px var(--theme-color),
+      0 0 40px var(--theme-color);
+    transition: all 0.3s ease;
+    cursor: pointer;
+  }
+
+  h1:hover {
+    letter-spacing: 16px;
+    transform: scale(1.02);
+  }
+
+  .v2-badge {
+    position: absolute;
+    bottom: -6px;
+    right: -25px;
+    font-size: 11px;
+    background: var(--theme-color);
+    color: #000;
+    font-weight: 900;
+    padding: 2px 7px;
+    border-radius: 4px;
+    letter-spacing: 1.5px;
+    box-shadow: 0 0 12px var(--theme-color);
+  }
+
+  .splash-quote {
+    position: absolute;
+    top: -16px;
+    right: -100px; 
+    color: #ffea00;
+    font-weight: 900;
+    font-size: 15px; 
+    text-shadow: 1px 1px 0 #000, -1px -1px 0 #000, 1px -1px 0 #000, -1px 1px 0 #000, 0 0 10px rgba(255, 234, 0, 0.7);
+    transform: rotate(-14deg);
+    pointer-events: auto;
+    cursor: crosshair;
+    animation: splashBounce 0.4s infinite alternate ease-in-out;
+    white-space: nowrap;
+    transition: transform 0.2s;
+  }
+
+  .splash-quote:hover {
+    animation: none;
+    transform: scale(1.15) rotate(5deg);
+    color: var(--theme-color);
+  }
+
+  @keyframes splashBounce {
+    0% { transform: scale(1) rotate(-14deg); }
+    100% { transform: scale(1.06) rotate(-14deg); }
+  }
+
+  /* Theme Switcher Bar */
+  .theme-bar {
+    display: flex;
+    gap: 6px;
+    margin-bottom: 18px;
+    flex-wrap: wrap;
+    justify-content: center;
+    z-index: 5;
+  }
+
+  .theme-pill {
+    background: rgba(0, 0, 0, 0.65);
+    border: 1px solid rgba(255,255,255,0.22);
+    color: #bbb;
+    font-family: inherit;
+    font-size: 9px;
+    letter-spacing: 1.1px;
+    padding: 6px 12px;
+    border-radius: 20px;
+    cursor: crosshair;
+    transition: all 0.25s ease;
+    text-transform: uppercase;
+  }
+
+  .theme-pill:hover, .theme-pill.active {
+    color: #000;
+    background: var(--theme-color);
+    border-color: var(--theme-color);
+    box-shadow: 0 0 14px var(--theme-color);
+    font-weight: bold;
+    transform: translateY(-1px);
+  }
+
+  .grid-container {
+    display: grid;
+    grid-template-columns: repeat(1, 1fr);
+    gap: 12px;
+    width: 100%;
+    max-width: 360px;
+    padding: 4px 0;
+    transform: translateZ(20px);
+  }
+
+  .place-btn {
+    background: rgba(0, 0, 0, 0.72);
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    color: #ffffff;
+    padding: 18px 16px;
+    font-size: 15px; 
+    font-family: inherit;
+    font-weight: bold;
+    letter-spacing: 2px; 
+    cursor: crosshair;
+    border-radius: 10px;
+    transition: all 0.25s ease-out;
+    position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-direction: column;
+    overflow: hidden;
+    text-align: center;
+  }
+
+  .place-btn:hover {
+    background: rgba(255, 255, 255, 0.12);
+    transform: translateY(-2px) scale(1.02);
+  }
+
+  .place-btn.is-gold { border-color: var(--gold); }
+  .place-btn.is-gold:hover { box-shadow: 0 0 20px 4px rgba(255, 215, 0, 0.65); }
+
+  .mini-label {
+    font-size: 9.5px;
+    margin-bottom: 4px;
+    letter-spacing: 1.5px;
+    text-shadow: 0 0 6px currentColor;
+    animation: pulseBadge 1.5s infinite alternate ease-in-out;
+  }
+
+  @keyframes pulseBadge {
+    0% { opacity: 0.7; transform: scale(0.98); }
+    100% { opacity: 1; transform: scale(1.02); }
+  }
+
+  .status-working {
+    font-size: 10px;
+    color: rgba(255, 255, 255, 0.5);
+    margin-top: 4px;
+    letter-spacing: 1px;
+    font-weight: normal;
+  }
+  .place-btn:hover .status-working { color: rgba(255, 255, 255, 0.95); }
+
+  .sub-controls-bar {
+    width: 100%;
+    display: flex;
+    gap: 10px;
+    margin-top: 18px;
+  }
+
+  .bakery-toggle-btn {
+    flex: 1;
+    background: rgba(0, 0, 0, 0.78);
+    border: 1px dashed var(--theme-color);
+    color: #fff;
+    padding: 13px;
+    border-radius: 8px;
+    font-family: inherit;
+    font-size: 13px;
+    font-weight: bold;
+    letter-spacing: 2px;
+    cursor: crosshair;
+    transition: all 0.3s ease;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+  }
+
+  .bakery-toggle-btn:hover {
+    background: var(--theme-color);
+    color: #000;
+    box-shadow: 0 0 22px var(--theme-color);
+    border-style: solid;
+  }
+
+  .vault-toggle-btn {
+    background: rgba(0, 0, 0, 0.78);
+    border: 1px dashed rgba(255,255,255,0.35);
+    color: #ccc;
+    padding: 13px 18px;
+    border-radius: 8px;
+    font-family: inherit;
+    font-size: 12px;
+    font-weight: bold;
+    letter-spacing: 1.5px;
+    cursor: crosshair;
+    transition: all 0.25s ease;
+  }
+  .vault-toggle-btn:hover {
+    color: #fff;
+    border-color: #fff;
+    background: rgba(255,255,255,0.12);
+  }
+
+  .oven-dot {
+    width: 8px;
+    height: 8px;
+    background: #39ff14;
+    border-radius: 50%;
+    box-shadow: 0 0 10px #39ff14;
+    animation: ovenPulse 1s infinite alternate;
+  }
+
+  @keyframes ovenPulse {
+    0% { opacity: 0.3; transform: scale(0.8); }
+    100% { opacity: 1; transform: scale(1.2); }
+  }
+
+  /* THE BAKERY GLOBAL COMMS DRAWER */
+  .bakery-chat-panel {
+    position: fixed;
+    right: -450px;
+    top: 0;
+    width: 420px;
+    max-width: 95vw;
+    height: 100vh;
+    background: rgba(5, 2, 12, 0.95);
+    backdrop-filter: blur(24px) saturate(200%);
+    -webkit-backdrop-filter: blur(24px) saturate(200%);
+    border-left: 2px solid var(--theme-color);
+    box-shadow: -15px 0 45px rgba(0,0,0,0.92), 0 0 25px var(--theme-color);
+    z-index: 100;
+    transition: right 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+    display: flex;
+    flex-direction: column;
+  }
+
+  .bakery-chat-panel.open { right: 0; }
+
+  .chat-header {
+    padding: 16px 20px;
+    border-bottom: 1px solid rgba(255,255,255,0.12);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    background: rgba(0,0,0,0.55);
+  }
+
+  .chat-title {
+    font-weight: 900;
+    letter-spacing: 1.5px;
+    color: #fff;
+    font-size: 13.5px;
+    display: flex;
+    align-items: center;
+    gap: 9px;
+    text-shadow: 0 0 10px var(--theme-color);
+  }
+
+  .chat-status-text {
+    font-size: 11px;
+    color: var(--lime);
+    letter-spacing: 1px;
+    font-weight: bold;
+    display: flex;
+    align-items: center;
+    gap: 5px;
+  }
+
+  .chat-close-btn {
+    background: transparent;
+    border: none;
+    color: #aaa;
+    font-size: 20px;
+    cursor: crosshair;
+    font-family: inherit;
+  }
+  .chat-close-btn:hover { color: var(--theme-color); }
+
+  .chat-user-bar {
+    padding: 10px 18px;
+    background: rgba(0,0,0,0.4);
+    border-bottom: 1px solid rgba(255,255,255,0.08);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    font-size: 11px;
+  }
+
+  .chat-user-input {
+    background: rgba(255,255,255,0.08);
+    border: 1px solid rgba(255,255,255,0.22);
+    color: var(--theme-color);
+    padding: 5px 10px;
+    border-radius: 4px;
+    font-family: inherit;
+    font-size: 11px;
+    width: 140px;
+    outline: none;
+  }
+
+  .chat-messages {
+    flex: 1;
+    overflow-y: auto;
+    padding: 14px 18px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    font-size: 12.5px;
+  }
+
+  .chat-bubble {
+    background: rgba(255, 255, 255, 0.05);
+    border-left: 2px solid var(--theme-color);
+    padding: 9px 12px;
+    border-radius: 0 6px 6px 0;
+    word-break: break-word;
+    animation: msgFade 0.2s ease-out;
+  }
+
+  .chat-bubble.is-bot {
+    border-left-color: var(--gold);
+    background: rgba(255, 215, 0, 0.06);
+  }
+
+  @keyframes msgFade {
+    from { opacity: 0; transform: translateY(4px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+
+  .chat-msg-header {
+    display: flex;
+    justify-content: space-between;
+    margin-bottom: 4px;
+    font-size: 10.5px;
+  }
+
+  .chat-msg-user { font-weight: bold; color: var(--theme-color); }
+  .chat-bubble.is-bot .chat-msg-user { color: var(--gold); }
+  .chat-msg-time { color: rgba(255,255,255,0.4); font-size: 9.5px; }
+  .chat-msg-text { color: #eee; line-height: 1.4; }
+
+  .chat-input-area {
+    padding: 12px 18px;
+    border-top: 1px solid rgba(255,255,255,0.12);
+    display: flex;
+    gap: 8px;
+    background: rgba(0,0,0,0.65);
+  }
+
+  .chat-msg-input {
+    flex: 1;
+    background: rgba(0,0,0,0.65);
+    border: 1px solid rgba(255,255,255,0.22);
+    color: #fff;
+    padding: 9px 12px;
+    border-radius: 6px;
+    font-family: inherit;
+    font-size: 12px;
+    outline: none;
+  }
+
+  .chat-send-btn {
+    background: var(--theme-color);
+    color: #000;
+    border: none;
+    padding: 0 16px;
+    border-radius: 6px;
+    font-weight: bold;
+    font-family: inherit;
+    cursor: crosshair;
+  }
+
+  /* CAKE VAULT MODAL */
+  #vault-modal {
+    position: fixed;
+    top: 0; left: 0; width: 100vw; height: 100vh;
+    background: rgba(0,0,0,0.8);
+    backdrop-filter: blur(14px);
+    z-index: 150;
+    display: none;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .vault-box {
+    background: #090314;
+    border: 1px solid var(--theme-color);
+    box-shadow: 0 0 35px var(--theme-color);
+    border-radius: 12px;
+    padding: 26px;
+    width: 520px;
+    max-width: 90vw;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  .vault-title {
+    font-size: 16px;
+    font-weight: bold;
+    letter-spacing: 2px;
+    color: var(--theme-color);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+
+  .vault-input {
+    background: rgba(255,255,255,0.06);
+    border: 1px solid rgba(255,255,255,0.22);
+    color: #fff;
+    padding: 10px;
+    border-radius: 6px;
+    font-family: inherit;
+    font-size: 12px;
+  }
+
+  .vault-output {
+    background: #000;
+    border: 1px solid #333;
+    padding: 10px;
+    font-size: 11px;
+    color: var(--lime);
+    word-break: break-all;
+    max-height: 80px;
+    overflow-y: auto;
+  }
+
+  .vault-btn-row {
+    display: flex;
+    gap: 8px;
+    margin-top: 6px;
+  }
+
+  .vault-btn {
+    flex: 1;
+    background: var(--theme-color);
+    color: #000;
+    font-weight: bold;
+    padding: 10px;
+    border-radius: 6px;
+    border: none;
+    cursor: crosshair;
+    font-family: inherit;
+  }
+
+  /* STARTUP ANIMATION OVERLAY */
+  #startup-overlay {
+    position: fixed;
+    top: 0; left: 0;
+    width: 100vw; height: 100vh;
+    background: #010004;
+    z-index: 9999;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    transition: opacity 0.4s ease-out;
+  }
+
+  .startup-loader {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 18px;
+  }
+
+  .startup-logo {
+    font-size: 42px;
+    font-weight: 900;
+    letter-spacing: 16px;
+    color: #fff;
+    text-shadow: 0 0 20px #00ffff, 0 0 40px #00ffff;
+  }
+
+  .startup-bar-container {
+    width: 280px;
+    height: 4px;
+    background: rgba(255,255,255,0.1);
+    border-radius: 2px;
+    overflow: hidden;
+    position: relative;
+  }
+
+  .startup-bar-fill {
+    position: absolute;
+    top: 0; left: 0;
+    height: 100%;
+    width: 0%;
+    background: var(--theme-color);
+    box-shadow: 0 0 10px var(--theme-color);
+    animation: bootFill 1.1s cubic-bezier(0.1, 0.7, 0.1, 1) forwards;
+  }
+
+  .startup-sub {
+    font-size: 11px;
+    letter-spacing: 3px;
+    color: rgba(255,255,255,0.6);
+    text-transform: uppercase;
+  }
+
+  @keyframes bootFill {
+    0% { width: 0%; }
+    50% { width: 65%; }
+    100% { width: 100%; }
+  }
+</style>
+</head>
+<body data-theme="dynamic">
+
+  <!-- Minimal Top HUD Bar -->
+  <div class="hud-top-bar">
+    <div class="hud-group">
+      <div class="hud-pill" id="view-counter-box" title="Total Site Views">
+        <span class="counter-dot"></span>
+        <span>VIEWS:</span>
+        <span class="counter-val" id="view-counter-val">1,482</span>
+      </div>
+      <button class="hud-pill" onclick="toggleAudio()" id="audio-toggle-btn" title="Toggle Sound FX">
+        <span id="audio-icon">🔊</span> SFX: ON
+      </button>
+    </div>
+
+    <div class="hud-group">
+      <div class="hud-pill" style="color: var(--theme-color);">
+        <span>OVEN STATUS:</span>
+        <span style="color: var(--lime); font-weight: bold;">● OPTIMAL</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- Startup Boot Overlay -->
+  <div id="startup-overlay" onclick="dismissStartup()">
+    <div class="startup-loader">
+      <div class="startup-logo">CAKES<span style="color: var(--theme-color);">V2</span></div>
+      <div class="startup-bar-container">
+        <div class="startup-bar-fill"></div>
+      </div>
+      <div class="startup-sub" id="boot-status">INITIALIZING CIPHER MATRICES...</div>
+    </div>
+  </div>
+
+  <canvas id="canvas-bg"></canvas>
+  <div class="scanlines"></div>
+
+  <div class="glass-panel" id="tilt-panel">
+    <div class="title-wrapper">
+      <h1 id="main-title">CAKES<span style="color: var(--theme-color);">V2</span></h1>
+      <span class="v2-badge">QUANTUM V2</span>
+      <div class="splash-quote" id="splash-text"></div>
+      <div class="top-warning">if you visit these sites without using cakesv2 they wont work when you try again</div>
+    </div>
+
+    <!-- 8 Themes with Interactive Physics -->
+    <div class="theme-bar">
+      <button class="theme-pill active" onclick="setTheme('dynamic', this)">Dynamic RGB</button>
+      <button class="theme-pill" onclick="setTheme('matrix', this)">Matrix Rain</button>
+      <button class="theme-pill" onclick="setTheme('synthwave', this)">Synthwave '84</button>
+      <button class="theme-pill" onclick="setTheme('blackhole', this)">Black Hole</button>
+      <button class="theme-pill" onclick="setTheme('cyberpunk', this)">Cyber Storm</button>
+      <button class="theme-pill" onclick="setTheme('hyperspace', this)">Hyperspace</button>
+      <button class="theme-pill" onclick="setTheme('vapor', this)">Arcade Vapor</button>
+      <button class="theme-pill" onclick="setTheme('stealth', this)">Stealth Obsidian</button>
+    </div>
+
+    <!-- Cake Places (Encoded Target) -->
+    <div class="grid-container" id="menu"></div>
+
+    <!-- Sub Controls Bar -->
+    <div class="sub-controls-bar">
+      <button class="bakery-toggle-btn" onclick="toggleBakeryComms()">
+        <span class="oven-dot"></span>
+        <span>The Bakery (Comms Network)</span>
+      </button>
+      <button class="vault-toggle-btn" onclick="openVaultModal()">
+        🔒 CAKE VAULT
+      </button>
+    </div>
+  </div>
+
+  <!-- THE BAKERY COMMS DRAWER -->
+  <div class="bakery-chat-panel" id="bakery-panel">
+    <div class="chat-header">
+      <div class="chat-title">
+        <span class="oven-dot"></span>
+        <span>The Bakery // Comms Network</span>
+      </div>
+      <span class="chat-status-text" id="chat-conn-status">● CONNECTED</span>
+      <button class="chat-close-btn" onclick="toggleBakeryComms()">✕</button>
+    </div>
+    <div class="chat-user-bar">
+      <span>HANDLE:</span>
+      <input type="text" id="chatHandle" class="chat-user-input" maxlength="15" placeholder="Baker_#">
+      <span id="active-bakers-count" style="color: rgba(255,255,255,0.4);">1 Baker</span>
+    </div>
+    <div class="chat-messages" id="chatList"></div>
+    <div class="chat-input-area">
+      <input type="text" id="chatInput" class="chat-msg-input" placeholder="Transmit signal or /cake..." maxlength="200" onkeydown="handleChatKey(event)">
+      <button class="chat-send-btn" onclick="sendBakeryMessage()">SEND</button>
+    </div>
+  </div>
+
+  <!-- CAKE VAULT MODAL -->
+  <div id="vault-modal" onclick="closeVaultModal(event)">
+    <div class="vault-box" onclick="event.stopPropagation()">
+      <div class="vault-title">
+        <span>🔒 CAKE CIPHER ENCODER</span>
+        <button style="background:none; border:none; color:#aaa; font-size:18px; cursor:crosshair;" onclick="closeVaultModal()">✕</button>
+      </div>
+      <span style="font-size: 11px; color: #888;">Paste any URL to convert it into the CakesV2 multi-layer cipher.</span>
+      <input type="text" id="vaultUrlInput" class="vault-input" placeholder="https://example.com/site">
+      <input type="text" id="vaultLabelInput" class="vault-input" placeholder="Button Label (e.g. CAKE PLACE 02)">
+      <div class="vault-btn-row">
+        <button class="vault-btn" onclick="encodeAndAddPlace()">ENCODE & PIN TO GRID</button>
+      </div>
+      <div class="vault-output" id="vaultOutput">Cipher payload will appear here...</div>
+    </div>
+  </div>
+
+  <script>
+    /* =========================================================================
+       AUDIO SYNTHESIZER (Web Audio API)
+       ========================================================================= */
+    let audioCtx = null;
+    let sfxEnabled = true;
+
+    function initAudio() {
+      if (!audioCtx) {
+        audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+      }
+    }
+
+    function emitBeep(freq = 600, type = 'sine', duration = 0.08) {
+      if (!sfxEnabled) return;
+      try {
+        initAudio();
+        const osc = audioCtx.createOscillator();
+        const gain = audioCtx.createGain();
+        osc.type = type;
+        osc.frequency.setValueAtTime(freq, audioCtx.currentTime);
+        gain.gain.setValueAtTime(0.12, audioCtx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + duration);
+        osc.connect(gain);
+        gain.connect(audioCtx.destination);
+        osc.start();
+        osc.stop(audioCtx.currentTime + duration);
+      } catch (e) {}
+    }
+
+    function toggleAudio() {
+      sfxEnabled = !sfxEnabled;
+      document.getElementById('audio-icon').innerText = sfxEnabled ? '🔊' : '🔇';
+      document.getElementById('audio-toggle-btn').innerText = sfxEnabled ? '🔊 SFX: ON' : '🔇 SFX: OFF';
+    }
+
+    /* =========================================================================
+       HARDENED MULTI-LAYER CIPHER ENGINE (CakesV2 Quantum Codec)
+       ========================================================================= */
+    const H_ENC = { '0':'A', '1':'S', '2':'O', '3':'P', '4':'G', '5':'H', '6':'D', '7':'F', '8':'E', '9':'R', 'a':'Q', 'b':'W', 'c':'U', 'd':'I', 'e':'T', 'f':'Y' };
+    const L_ENC = { '0':'Y', '1':'T', '2':'I', '3':'U', '4':'W', '5':'Q', '6':'R', '7':'E', '8':'F', '9':'D', 'a':'H', 'b':'G', 'c':'P', 'd':'O', 'e':'S', 'f':'A' };
+
+    const H_DEC = { 'A':'0', 'S':'1', 'O':'2', 'P':'3', 'G':'4', 'H':'5', 'D':'6', 'F':'7', 'E':'8', 'R':'9', 'Q':'a', 'W':'b', 'U':'c', 'I':'d', 'T':'e', 'Y':'f' };
+    const L_DEC = { 'Y':'0', 'T':'1', 'I':'2', 'U':'3', 'W':'4', 'Q':'5', 'R':'6', 'E':'7', 'F':'8', 'D':'9', 'H':'a', 'G':'b', 'P':'c', 'O':'d', 'S':'e', 'A':'f' };
+
+    function encipherCakeUrl(url) {
+      let hex = '';
+      for (let i = 0; i < url.length; i++) {
+        hex += url.charCodeAt(i).toString(16).padStart(2, '0');
+      }
+      let pairs = [];
+      for (let i = 0; i < hex.length; i += 2) {
+        let h = hex[i].toLowerCase();
+        let l = hex[i+1].toLowerCase();
+        pairs.push((H_ENC[h] || 'A') + (L_ENC[l] || 'Y'));
+      }
+      pairs.reverse();
+      return 'CK2_ENC$' + pairs.join('');
+    }
+
+    function decipherCakeUrl(token) {
+      if (!token || !token.startsWith('CK2_ENC$')) return token;
+      let body = token.substring(8);
+      let pairs = [];
+      for (let i = 0; i < body.length; i += 2) {
+        pairs.push(body.substr(i, 2));
+      }
+      pairs.reverse();
+      let hex = '';
+      for (let p of pairs) {
+        let h = H_DEC[p[0]] || '0';
+        let l = L_DEC[p[1]] || '0';
+        hex += h + l;
+      }
+      let out = '';
+      for (let i = 0; i < hex.length; i += 2) {
+        out += String.fromCharCode(parseInt(hex.substr(i, 2), 16));
+      }
+      return out;
+    }
+
+    /* =========================================================================
+       CAKE PLACES CONFIGURATION
+       Target: https://jort39234.github.io/saw5.9.5/
+       Encoded into CK2_ENC$ token
+       ========================================================================= */
+    const defaultPlaces = [
+      { 
+        label: "CAKE PLACE 01", 
+        cipher: "CK2_ENC$OAPQOSPDOSPQFEDTFUOADADDOSDIFQDFFWDDDEOSPWPUPIPDPUFWFIDADHOAOAPHFUFYFWFWDF",
+        colorClass: 'is-gold', 
+        isFavorite: true 
+      }
+    ];
+
+    function renderPlaces() {
+      const menu = document.getElementById('menu');
+      menu.innerHTML = '';
+      const customPlaces = JSON.parse(localStorage.getItem('cakesv2_custom_places') || '[]');
+      const allPlaces = [...defaultPlaces, ...customPlaces];
+
+      allPlaces.forEach(p => {
+        const btn = document.createElement('button');
+        btn.className = 'place-btn';
+        if (p.colorClass) btn.classList.add(p.colorClass);
+
+        btn.innerHTML = `<span class="mini-label" style="color: var(--gold);">★ PRIMARY SLICE ★</span><span>${p.label}</span><span class="status-working">working</span>`;
+        btn.onclick = () => {
+          emitBeep(850, 'triangle', 0.1);
+          initCakeSession(p.cipher);
+        };
+        menu.appendChild(btn);
+      });
+    }
+
+    function initCakeSession(cipherToken) {
+      const realUrl = decipherCakeUrl(cipherToken);
+      launchWarp(realUrl);
+    }
+
+    /* =========================================================================
+       CAKE VAULT (ENCODE & PIN NEW PLACES)
+       ========================================================================= */
+    function openVaultModal() {
+      emitBeep(700, 'sine', 0.07);
+      document.getElementById('vault-modal').style.display = 'flex';
+    }
+
+    function closeVaultModal() {
+      document.getElementById('vault-modal').style.display = 'none';
+    }
+
+    function encodeAndAddPlace() {
+      const url = document.getElementById('vaultUrlInput').value.trim();
+      const label = document.getElementById('vaultLabelInput').value.trim() || 'CUSTOM CAKE';
+      if (!url) return;
+
+      const cipher = encipherCakeUrl(url);
+      document.getElementById('vaultOutput').innerText = cipher;
+
+      const customPlaces = JSON.parse(localStorage.getItem('cakesv2_custom_places') || '[]');
+      customPlaces.push({
+        label: label.toUpperCase(),
+        cipher: cipher,
+        colorClass: 'is-gold'
+      });
+      localStorage.setItem('cakesv2_custom_places', JSON.stringify(customPlaces));
+      renderPlaces();
+      emitBeep(920, 'triangle', 0.15);
+      setTimeout(closeVaultModal, 800);
+    }
+
+    /* =========================================================================
+       VIEW COUNTER & STARTUP
+       ========================================================================= */
+    async function initViewCounter() {
+      const counterEl = document.getElementById('view-counter-val');
+      let baseCount = parseInt(localStorage.getItem('cakesv2_views_count') || '1482', 10) + 1;
+      localStorage.setItem('cakesv2_views_count', baseCount);
+      counterEl.innerText = baseCount.toLocaleString();
+
+      try {
+        const res = await fetch('https://api.counterapi.dev/v1/cakesv2_site_views_prod/views/up');
+        if (res.ok) {
+          const data = await res.json();
+          if (data && data.count) {
+            counterEl.innerText = (data.count + 1480).toLocaleString();
+          }
+        }
+      } catch (err) {}
+    }
+    initViewCounter();
+
+    function dismissStartup() {
+      const overlay = document.getElementById('startup-overlay');
+      if (overlay && overlay.style.display !== 'none') {
+        overlay.style.opacity = '0';
+        setTimeout(() => { overlay.style.display = 'none'; }, 400);
+      }
+    }
+    setTimeout(() => {
+      const status = document.getElementById('boot-status');
+      if(status) status.innerText = "ALL CIPHERS LOADED • ACCESS GRANTED";
+    }, 600);
+    setTimeout(dismissStartup, 1200);
+
+    /* =========================================================================
+       WARP LAUNCHER (Opens in about:blank container)
+       ========================================================================= */
+    function launchWarp(url) {
+      const id = Math.floor(Math.random() * 100000);
+      const sep = url.includes('?') ? '&' : '?';
+      const target = `${url}${sep}session=${id}`;
+      const currentColor = getComputedStyle(document.documentElement).getPropertyValue('--theme-color').trim() || '#00ffff';
+      const greetings = ["Fresh out of the oven", "Enjoy your slice", "See ya on the other side", "Stay frosted"];
+      const randomGreeting = greetings[Math.floor(Math.random() * greetings.length)];
+
+      const w = window.open('about:blank', '_blank');
+      if (w) {
+        w.document.open();
+        w.document.write(`
+          <!DOCTYPE html>
+          <html>
+          <head>
+            <title>CakesV2</title>
+            <style>
+              html, body { margin: 0; padding: 0; background: #000; overflow: hidden; width: 100vw; height: 100vh; color: #fff; font-family: 'Courier New', monospace; display: flex; flex-direction: column; justify-content: center; align-items: center; }
+              .msg { font-size: 34px; font-weight: bold; z-index: 10; animation: float 2s infinite alternate ease-in-out; text-align: center; transition: opacity 0.5s ease; text-shadow: 0 0 15px ${currentColor}, 0 0 30px ${currentColor}; pointer-events: none; }
+              .sub { font-size: 16px; color: rgba(255,255,255,0.7); margin-top: 12px; text-shadow: none; }
+              @keyframes float { 0% { transform: translateY(-5px); } 100% { transform: translateY(5px); } }
+              iframe { 
+                display: block; width: 100vw; height: 100vh; border: none; margin: 0; padding: 0; position: absolute; top: 0; left: 0; 
+                z-index: 3; background: #000; opacity: 0; transform: scale(0.01); 
+                transition: transform 0.65s cubic-bezier(0.1, 1, 0.2, 1), opacity 0.3s ease-out; 
+              }
+              canvas { position: absolute; top: 0; left: 0; z-index: 1; pointer-events: none; transition: opacity 1.5s ease-in-out; }
+            </style>
+          </head>
+          <body>
+            <canvas id="warpCanvas"></canvas>
+            <iframe id="frm" src="${target}" allowfullscreen sandbox="allow-scripts allow-same-origin allow-pointer-lock allow-forms"></iframe>
+            <div class="msg" id="ldr">${randomGreeting}<div class="sub">- CakesV2</div></div>
+            
+            <script>
+              const wc = document.getElementById('warpCanvas');
+              const wctx = wc.getContext('2d');
+              let stars = [];
+              wc.width = window.innerWidth; wc.height = window.innerHeight;
+              for(let i=0; i<600; i++) {
+                stars.push({ x: Math.random()*wc.width-wc.width/2, y: Math.random()*wc.height-wc.height/2, z: Math.random()*wc.width, pz: Math.random()*wc.width });
+              }
+              let speed = 0.5;
+              let isTransitioning = false;
+
+              function animateWarp() {
+                speed += 0.2 + (speed * 0.025); 
+                if (speed > 130 && !isTransitioning) {
+                  isTransitioning = true;
+                  document.getElementById('ldr').style.opacity = '0';
+                  const frame = document.getElementById('frm');
+                  frame.style.opacity = '1';
+                  frame.style.transform = 'scale(1)';
+                  setTimeout(() => { wc.style.opacity = '0'; }, 800);
+                }
+                wctx.fillStyle = 'rgba(0, 0, 0, 0.4)';
+                wctx.fillRect(0,0,wc.width,wc.height);
+                let cx = wc.width/2; let cy = wc.height/2;
+                
+                for(let i=0; i<stars.length; i++) {
+                  stars[i].pz = stars[i].z; 
+                  stars[i].z -= speed;
+                  if(stars[i].z <= 1) { 
+                    stars[i].z = wc.width; 
+                    stars[i].pz = wc.width;
+                    stars[i].x = Math.random()*wc.width-wc.width/2;
+                    stars[i].y = Math.random()*wc.height-wc.height/2;
+                  }
+                  let sx = (stars[i].x / stars[i].z) * wc.width + cx;
+                  let sy = (stars[i].y / stars[i].z) * wc.width + cy;
+                  let px = (stars[i].x / stars[i].pz) * wc.width + cx;
+                  let py = (stars[i].y / stars[i].pz) * wc.width + cy;
+                  
+                  wctx.beginPath();
+                  wctx.moveTo(px, py);
+                  wctx.lineTo(sx, sy);
+                  wctx.lineWidth = Math.max(0.5, (1 - stars[i].z/wc.width) * 4);
+                  wctx.strokeStyle = (i % 4 === 0) ? '${currentColor}' : '#ffffff'; 
+                  wctx.stroke();
+                }
+                if (!isTransitioning || wc.style.opacity !== '0') requestAnimationFrame(animateWarp);
+              }
+              animateWarp();
+            <\/script>
+          </body>
+          </html>
+        `);
+        w.document.close();
+      }
+    }
+
+    /* =========================================================================
+       SPLASH QUOTES
+       ========================================================================= */
+    const quotes = [
+      "100% legal",
+      "Let them eat cake",
+      "Fresh out of the oven",
+      "Never leave your cake in too long",
+      "CakesV2 quantum protocol",
+      "Double iced, double sliced",
+      "Stay frosted",
+      "RIP Sweet Tea",
+      "The cake is definitely not a lie",
+      "Whisk it real good",
+      "Quantum connection verified"
+    ];
+    document.getElementById('splash-text').innerText = quotes[Math.floor(Math.random() * quotes.length)];
+
+    /* =========================================================================
+       THE BAKERY REALTIME COMMS
+       ========================================================================= */
+    const defaultHandle = 'Baker_' + Math.floor(1000 + Math.random() * 9000);
+    const handleInput = document.getElementById('chatHandle');
+    handleInput.value = localStorage.getItem('cakesv2_handle') || defaultHandle;
+    handleInput.addEventListener('change', () => {
+      localStorage.setItem('cakesv2_handle', handleInput.value.trim() || defaultHandle);
+    });
+
+    const chatList = document.getElementById('chatList');
+    const statusText = document.getElementById('chat-conn-status');
+    const BAKERY_TOPIC = 'cakesv2/bakery/comms/global_v2';
+    const PRESENCE_TOPIC = 'cakesv2/bakery/presence/global_v2';
+
+    const localMesh = new BroadcastChannel('cakesv2_mesh_chat');
+    localMesh.onmessage = (e) => {
+      if (e.data && e.data.type === 'msg') {
+        renderChatMessage(e.data.payload);
+        emitBeep(980, 'sine', 0.05);
+      }
+    };
+
+    const myClientId = 'baker_v2_' + Math.random().toString(16).substring(2, 10);
+    const brokers = [
+      'wss://broker.emqx.io:8084/mqtt',
+      'wss://broker.hivemq.com:8884/mqtt'
+    ];
+    let currentBrokerIdx = 0;
+    let mqttClient = null;
+
+    function connectMqtt() {
+      try {
+        mqttClient = mqtt.connect(brokers[currentBrokerIdx], {
+          clientId: myClientId,
+          clean: true,
+          connectTimeout: 4000,
+          reconnectPeriod: 3000
+        });
+
+        mqttClient.on('connect', () => {
+          statusText.innerText = '● LIVE';
+          statusText.style.color = '#39ff14';
+          mqttClient.subscribe(BAKERY_TOPIC);
+          mqttClient.subscribe(PRESENCE_TOPIC);
+          mqttClient.publish(PRESENCE_TOPIC, JSON.stringify({ id: myClientId, time: Date.now() }));
+        });
+
+        mqttClient.on('message', (topic, payload) => {
+          try {
+            const data = JSON.parse(payload.toString());
+            if (topic === BAKERY_TOPIC) {
+              renderChatMessage(data);
+              emitBeep(980, 'sine', 0.05);
+            }
+          } catch (e) {}
+        });
+
+        mqttClient.on('error', () => {
+          currentBrokerIdx = (currentBrokerIdx + 1) % brokers.length;
+        });
+      } catch (err) {
+        statusText.innerText = '● MESH MODE';
+        statusText.style.color = '#00ffff';
+      }
+    }
+    connectMqtt();
+
+    function renderChatMessage(msg) {
+      const bubble = document.createElement('div');
+      bubble.className = 'chat-bubble';
+      if (msg.isBot) bubble.classList.add('is-bot');
+
+      const timeStr = msg.time ? new Date(msg.time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '';
+      const safeUser = document.createElement('div'); safeUser.innerText = msg.user || 'Baker';
+      const safeText = document.createElement('div'); safeText.innerText = msg.text || '';
+
+      bubble.innerHTML = `
+        <div class="chat-msg-header">
+          <span class="chat-msg-user">${safeUser.innerHTML}</span>
+          <span class="chat-msg-time">${timeStr}</span>
+        </div>
+        <div class="chat-msg-text">${safeText.innerHTML}</div>
+      `;
+      chatList.appendChild(bubble);
+      chatList.scrollTop = chatList.scrollHeight;
+    }
+
+    function toggleBakeryComms() {
+      emitBeep(700, 'sine', 0.05);
+      const p = document.getElementById('bakery-panel');
+      p.classList.toggle('open');
+      if (p.classList.contains('open')) {
+        document.getElementById('chatInput').focus();
+      }
+    }
+
+    function handleChatKey(e) {
+      if (e.key === 'Enter') sendBakeryMessage();
+    }
+
+    function sendBakeryMessage() {
+      const input = document.getElementById('chatInput');
+      const text = input.value.trim();
+      if (!text) return;
+
+      const user = handleInput.value.trim() || defaultHandle;
+      const msgObj = { user, text, time: Date.now() };
+
+      renderChatMessage(msgObj);
+      emitBeep(620, 'triangle', 0.06);
+
+      if (mqttClient && mqttClient.connected) {
+        mqttClient.publish(BAKERY_TOPIC, JSON.stringify(msgObj));
+      }
+
+      localMesh.postMessage({ type: 'msg', payload: msgObj });
+      handleBotTriggers(text);
+      input.value = '';
+    }
+
+    function handleBotTriggers(text) {
+      const lower = text.toLowerCase();
+      let botReply = null;
+      let botName = "MasterBaker";
+
+      if (lower.startsWith('/help')) {
+        botReply = "Commands: /cake (pastry dispenser), /ping (latency diagnostic), /status (oven matrix info).";
+      } else if (lower.startsWith('/ping')) {
+        botReply = "Pong! Oven temp: 450°F. Mesh latency: <1ms.";
+      } else if (lower.startsWith('/cake')) {
+        const cakes = ["Red Velvet Slice 🍰", "Triple Chocolate Fudge 🍫", "Matcha Mille Crêpe 🍵", "Lemon Tart 🍋"];
+        botReply = "Freshly baked: " + cakes[Math.floor(Math.random() * cakes.length)];
+      } else if (lower.includes('hello') || lower.includes('hey')) {
+        botReply = "Welcome to CakesV2 Bakery Network. Transmission online.";
+      }
+
+      if (botReply) {
+        setTimeout(() => {
+          const botMsg = { user: `🤖 ${botName}`, text: botReply, time: Date.now(), isBot: true };
+          renderChatMessage(botMsg);
+          emitBeep(1100, 'sine', 0.06);
+        }, 500);
+      }
+    }
+
+    renderChatMessage({
+      user: "🤖 MasterBaker",
+      text: "CakesV2 Quantum Network initialized. All places encrypted.",
+      time: Date.now(),
+      isBot: true
+    });
+
+    /* =========================================================================
+       MULTI-THEME PHYSICS ENGINE (Interactive Physics Simulations)
+       ========================================================================= */
+    const canvas = document.getElementById('canvas-bg');
+    const ctx = canvas.getContext('2d');
+    canvas.width = window.innerWidth;
+    canvas.height = window.innerHeight;
+
+    let activeTheme = 'dynamic';
+    let globalHue = 180; 
+    let mouse = { x: window.innerWidth / 2, y: window.innerHeight / 2, vx: 0, vy: 0, prevX: window.innerWidth / 2, prevY: window.innerHeight / 2 };
+    let isMouseDown = false;
+
+    window.addEventListener('mousemove', (e) => { 
+      mouse.vx = e.x - mouse.prevX;
+      mouse.vy = e.y - mouse.prevY;
+      mouse.prevX = mouse.x;
+      mouse.prevY = mouse.y;
+      mouse.x = e.x; 
+      mouse.y = e.y; 
+    });
+
+    window.addEventListener('mousedown', (e) => { 
+      isMouseDown = true;
+      handlePhysicsClick(e);
+    });
+
+    window.addEventListener('mouseup', () => { isMouseDown = false; });
+    window.addEventListener('contextmenu', e => e.preventDefault());
+
+    // 3D Tilt Effect
+    const panel = document.getElementById('tilt-panel');
+    document.addEventListener('mousemove', (e) => {
+      let xAxis = (window.innerWidth / 2 - e.pageX) / 140; 
+      let yAxis = (window.innerHeight / 2 - e.pageY) / -140;
+      panel.style.transform = `rotateY(${xAxis}deg) rotateX(${yAxis}deg)`;
+    });
+    document.addEventListener('mouseleave', () => {
+      panel.style.transform = `rotateY(0deg) rotateX(0deg)`;
+    });
+
+    function setTheme(name, btn) {
+      activeTheme = name;
+      document.body.setAttribute('data-theme', name);
+      document.querySelectorAll('.theme-pill').forEach(b => b.classList.remove('active'));
+      if (btn) btn.classList.add('active');
+
+      const colorMap = {
+        dynamic: `hsl(${globalHue}, 100%, 50%)`,
+        matrix: '#39ff14',
+        synthwave: '#ff00aa',
+        blackhole: '#ff7700',
+        cyberpunk: '#00e5ff',
+        hyperspace: '#9d00ff',
+        vapor: '#ff71ce',
+        stealth: '#8892b0'
+      };
+      document.documentElement.style.setProperty('--theme-color', colorMap[name]);
+      emitBeep(750, 'sine', 0.05);
+
+      if (name === 'dynamic') initDynamicPhysics();
+      if (name === 'matrix') initMatrixPhysics();
+      if (name === 'synthwave') initSynthwavePhysics();
+      if (name === 'blackhole') initBlackholePhysics();
+      if (name === 'cyberpunk') initCyberpunkPhysics();
+      if (name === 'hyperspace') initHyperspacePhysics();
+      if (name === 'vapor') initVaporPhysics();
+      if (name === 'stealth') initStealthPhysics();
+    }
+
+    function handlePhysicsClick(e) {
+      if (activeTheme === 'dynamic') {
+        dynamicRipples.push({ x: e.x, y: e.y, radius: 5, maxRadius: 280, alpha: 1, speed: 12 });
+        dynamicParticles.forEach(p => {
+          let dx = p.x - e.x;
+          let dy = p.y - e.y;
+          let d = Math.sqrt(dx*dx + dy*dy) || 1;
+          if (d < 300) {
+            let force = (300 - d) / 10;
+            p.vx += (dx / d) * force;
+            p.vy += (dy / d) * force;
+          }
+        });
+      } else if (activeTheme === 'matrix') {
+        matrixShockwaves.push({ x: e.x, y: e.y, r: 10, maxR: 350, alpha: 1 });
+        matrixStreams.forEach(stream => {
+          stream.drops.forEach(d => {
+            let dx = stream.x - e.x;
+            let dy = d.y - e.y;
+            let dist = Math.sqrt(dx*dx + dy*dy) || 1;
+            if (dist < 250) {
+              d.vx = (dx / dist) * (20 * (1 - dist / 250));
+              d.vy = (dy / dist) * (20 * (1 - dist / 250));
+            }
+          });
+        });
+      } else if (activeTheme === 'synthwave') {
+        synthRipples.push({ x: e.x, y: e.y, r: 0, alpha: 1 });
+        sunPhysics.vy = -18;
+      } else if (activeTheme === 'blackhole') {
+        blackHoleFlares.push({ x: canvas.width / 2, y: canvas.height / 2, r: 40, maxR: 450, alpha: 1 });
+        cosmicMatter.forEach(p => {
+          p.radialSpeed = (Math.random() - 0.5) * 15;
+          p.radius += 50;
+        });
+      } else if (activeTheme === 'cyberpunk') {
+        cyberLightning.push({ x: e.x, y: 0, targetX: e.x + (Math.random()-0.5)*100, targetY: canvas.height, life: 1 });
+        cyberSplashes.push({ x: e.x, y: e.y, r: 5, maxR: 200, alpha: 1 });
+      } else if (activeTheme === 'hyperspace') {
+        hyperspaceBoost = 4.0;
+      } else if (activeTheme === 'vapor') {
+        vaporBodies.forEach(b => {
+          let dx = b.x - e.x;
+          let dy = b.y - e.y;
+          let dist = Math.sqrt(dx*dx + dy*dy) || 1;
+          let force = 4000 / (dist + 50);
+          b.vx += (dx / dist) * force;
+          b.vy += (dy / dist) * force;
+          b.rotSpeed += (Math.random() - 0.5) * 0.3;
+        });
+      } else if (activeTheme === 'stealth') {
+        stealthShockwaves.push({ x: e.x, y: e.y, r: 0, alpha: 1 });
+      }
+    }
+
+    /* 1. DYNAMIC RGB (Elastic Spring Swarm & Gravity Well) */
+    let dynamicParticles = [];
+    let dynamicRipples = [];
+
+    function initDynamicPhysics() {
+      dynamicParticles = [];
+      let count = Math.floor((canvas.width * canvas.height) / 8500);
+      for (let i = 0; i < count; i++) {
+        dynamicParticles.push({
+          x: Math.random() * canvas.width,
+          y: Math.random() * canvas.height,
+          vx: (Math.random() - 0.5) * 2,
+          vy: (Math.random() - 0.5) * 2,
+          mass: Math.random() * 2 + 1,
+          size: Math.random() * 2.5 + 2
+        });
+      }
+    }
+
+    function renderDynamic() {
+      globalHue = (globalHue + 0.25) % 360;
+      document.documentElement.style.setProperty('--theme-color', `hsl(${globalHue}, 100%, 50%)`);
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+      for (let i = dynamicRipples.length - 1; i >= 0; i--) {
+        let rip = dynamicRipples[i];
+        rip.radius += rip.speed;
+        rip.alpha -= 0.02;
+        ctx.beginPath();
+        ctx.arc(rip.x, rip.y, rip.radius, 0, Math.PI * 2);
+        ctx.strokeStyle = `hsla(${globalHue}, 100%, 65%, ${Math.max(0, rip.alpha)})`;
+        ctx.lineWidth = 4 * rip.alpha;
+        ctx.stroke();
+        if (rip.alpha <= 0) dynamicRipples.splice(i, 1);
+      }
+
+      dynamicParticles.forEach(p => {
+        let dx = mouse.x - p.x;
+        let dy = mouse.y - p.y;
+        let dist = Math.sqrt(dx * dx + dy * dy) || 1;
+
+        if (isMouseDown) {
+          let pull = (400 - Math.min(dist, 400)) / 40;
+          p.vx += (dx / dist) * pull;
+          p.vy += (dy / dist) * pull;
+        } else if (dist < 180) {
+          let repel = (180 - dist) / 30;
+          p.vx -= (dx / dist) * repel;
+          p.vy -= (dy / dist) * repel;
+        }
+
+        p.vx *= 0.96;
+        p.vy *= 0.96;
+        p.x += p.vx;
+        p.y += p.vy;
+
+        if (p.x < 0) { p.x = 0; p.vx *= -1; }
+        if (p.x > canvas.width) { p.x = canvas.width; p.vx *= -1; }
+        if (p.y < 0) { p.y = 0; p.vy *= -1; }
+        if (p.y > canvas.height) { p.y = canvas.height; p.vy *= -1; }
+
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
+        ctx.fillStyle = `hsl(${globalHue}, 100%, 55%)`;
+        ctx.fill();
+      });
+
+      for (let a = 0; a < dynamicParticles.length; a++) {
+        for (let b = a + 1; b < dynamicParticles.length; b++) {
+          let dx = dynamicParticles[a].x - dynamicParticles[b].x;
+          let dy = dynamicParticles[a].y - dynamicParticles[b].y;
+          let distSq = dx * dx + dy * dy;
+          if (distSq < 13000) {
+            let alpha = 1 - distSq / 13000;
+            ctx.strokeStyle = `hsla(${globalHue}, 100%, 50%, ${alpha * 0.7})`;
+            ctx.lineWidth = 1;
+            ctx.beginPath();
+            ctx.moveTo(dynamicParticles[a].x, dynamicParticles[a].y);
+            ctx.lineTo(dynamicParticles[b].x, dynamicParticles[b].y);
+            ctx.stroke();
+          }
+        }
+      }
+    }
+
+    /* 2. MATRIX RAIN (Vorticity Displacement & EMP Shockwaves) */
+    let matrixStreams = [];
+    let matrixShockwaves = [];
+    const matrixChars = "01CAKESV2QUANTUMBAKERY789";
+
+    function initMatrixPhysics() {
+      matrixStreams = [];
+      let cols = Math.floor(canvas.width / 18);
+      for (let i = 0; i < cols; i++) {
+        let drops = [];
+        let numDrops = Math.floor(Math.random() * 8) + 12;
+        let startY = Math.random() * -600;
+        for (let j = 0; j < numDrops; j++) {
+          drops.push({
+            y: startY + j * 18,
+            char: matrixChars[Math.floor(Math.random() * matrixChars.length)],
+            vx: 0,
+            vy: 0
+          });
+        }
+        matrixStreams.push({
+          x: i * 18,
+          baseSpeed: Math.random() * 3 + 4,
+          drops
+        });
+      }
+    }
+
+    function renderMatrix() {
+      ctx.fillStyle = "rgba(0, 9, 3, 0.22)";
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      ctx.font = "14px monospace";
+
+      for (let s = matrixShockwaves.length - 1; s >= 0; s--) {
+        let sw = matrixShockwaves[s];
+        sw.r += 12;
+        sw.alpha -= 0.03;
+        ctx.beginPath();
+        ctx.arc(sw.x, sw.y, sw.r, 0, Math.PI * 2);
+        ctx.strokeStyle = `rgba(57, 255, 20, ${Math.max(0, sw.alpha)})`;
+        ctx.lineWidth = 4;
+        ctx.stroke();
+        if (sw.alpha <= 0) matrixShockwaves.splice(s, 1);
+      }
+
+      matrixStreams.forEach(stream => {
+        stream.drops.forEach((d, idx) => {
+          let curX = stream.x + d.vx;
+          let curY = d.y + d.vy;
+
+          let dx = curX - mouse.x;
+          let dy = curY - mouse.y;
+          let dist = Math.sqrt(dx * dx + dy * dy);
+
+          if (dist < 100) {
+            let force = (100 - dist) / 10;
+            d.vx += (dx / dist) * force + (mouse.vx * 0.1);
+            d.vy += (dy / dist) * force + (mouse.vy * 0.1);
+          }
+
+          d.vx *= 0.92;
+          d.vy *= 0.92;
+          d.y += stream.baseSpeed;
+
+          if (idx === stream.drops.length - 1) {
+            ctx.fillStyle = "#ffffff";
+          } else {
+            ctx.fillStyle = "#39ff14";
+          }
+
+          if (Math.random() > 0.98) {
+            d.char = matrixChars[Math.floor(Math.random() * matrixChars.length)];
+          }
+
+          ctx.fillText(d.char, curX, curY);
+
+          if (d.y > canvas.height + 50) {
+            d.y = -50;
+            d.vx = 0;
+            d.vy = 0;
+          }
+        });
+      });
+    }
+
+    /* 3. SYNTHWAVE '84 (Real-time Mesh Deformer & Kinetic Sun) */
+    let synthOffset = 0;
+    let synthRipples = [];
+    let sunPhysics = { y: 0, baseElevation: 0, vy: 0 };
+
+    function initSynthwavePhysics() {
+      sunPhysics.baseElevation = canvas.height * 0.38;
+      sunPhysics.y = sunPhysics.baseElevation;
+      sunPhysics.vy = 0;
+    }
+
+    function renderSynthwave() {
+      ctx.fillStyle = "#0c0018";
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+      let horizon = canvas.height * 0.58;
+      let cx = canvas.width / 2;
+
+      // Sun Physics (Pendulum Damping)
+      let dy = sunPhysics.baseElevation - sunPhysics.y;
+      sunPhysics.vy += dy * 0.04;
+      sunPhysics.vy *= 0.92;
+      sunPhysics.y += sunPhysics.vy;
+
+      let sunGlow = ctx.createRadialGradient(cx, sunPhysics.y, 10, cx, sunPhysics.y, 100);
+      sunGlow.addColorStop(0, '#ffe600');
+      sunGlow.addColorStop(0.5, '#ff00aa');
+      sunGlow.addColorStop(1, 'transparent');
+      ctx.fillStyle = sunGlow;
+      ctx.beginPath();
+      ctx.arc(cx, sunPhysics.y, 90, 0, Math.PI * 2);
+      ctx.fill();
+
+      for (let i = 0; i < 6; i++) {
+        ctx.fillStyle = "#0c0018";
+        ctx.fillRect(cx - 95, sunPhysics.y + 10 + i * 14, 190, 5);
+      }
+
+      synthOffset = (synthOffset + 2) % 36;
+      ctx.strokeStyle = "rgba(255, 0, 170, 0.75)";
+      ctx.lineWidth = 2;
+
+      for (let x = -canvas.width; x < canvas.width * 2; x += 65) {
+        let mouseInfluence = (mouse.x - cx) * 0.06;
+        ctx.beginPath();
+        ctx.moveTo(cx + mouseInfluence, horizon);
+        ctx.lineTo(x, canvas.height);
+        ctx.stroke();
+      }
+
+      for (let y = horizon; y < canvas.height; y += 12) {
+        let progress = (y - horizon) / (canvas.height - horizon);
+        let py = y + (synthOffset * progress);
+        if (py > canvas.height) continue;
+
+        let bend = 0;
+        let dMouse = Math.abs(mouse.y - py);
+        if (dMouse < 80) {
+          bend = (80 - dMouse) * (isMouseDown ? 0.6 : 0.3);
+        }
+
+        ctx.beginPath();
+        ctx.moveTo(0, py + bend);
+        ctx.lineTo(canvas.width, py + bend);
+        ctx.stroke();
+      }
+    }
+
+    /* 4. BLACK HOLE (Relativistic Accretion Orbital Physics) */
+    let cosmicMatter = [];
+    let blackHoleFlares = [];
+
+    function initBlackholePhysics() {
+      cosmicMatter = [];
+      for (let i = 0; i < 380; i++) {
+        cosmicMatter.push({
+          angle: Math.random() * Math.PI * 2,
+          radius: Math.random() * 320 + 90,
+          orbitSpeed: Math.random() * 0.02 + 0.015,
+          radialSpeed: 0,
+          size: Math.random() * 2.8 + 1,
+          hue: Math.random() * 40 + 15
+        });
+      }
+    }
+
+    function renderBlackhole() {
+      ctx.fillStyle = 'rgba(2, 2, 6, 0.28)';
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+      let cx = canvas.width / 2;
+      let cy = canvas.height / 2;
+
+      for (let f = blackHoleFlares.length - 1; f >= 0; f--) {
+        let fl = blackHoleFlares[f];
+        fl.r += 10;
+        fl.alpha -= 0.025;
+        ctx.beginPath();
+        ctx.arc(fl.x, fl.y, fl.r, 0, Math.PI * 2);
+        ctx.strokeStyle = `rgba(255, 120, 0, ${Math.max(0, fl.alpha)})`;
+        ctx.lineWidth = 6 * fl.alpha;
+        ctx.stroke();
+        if (fl.alpha <= 0) blackHoleFlares.splice(f, 1);
+      }
+
+      cosmicMatter.forEach(p => {
+        p.angle += p.orbitSpeed;
+        p.radialSpeed += (90 - p.radius) * 0.0003;
+        p.radius -= 0.35 + p.radialSpeed;
+
+        if (p.radius < 75) {
+          p.radius = Math.random() * 200 + 260;
+          p.radialSpeed = 0;
+        }
+
+        let x = cx + Math.cos(p.angle) * p.radius * 1.5;
+        let y = cy + Math.sin(p.angle) * p.radius * 0.7;
+
+        let dx = mouse.x - x;
+        let dy = mouse.y - y;
+        let dist = Math.sqrt(dx * dx + dy * dy);
+        if (dist < 120) {
+          p.radius += (120 - dist) * 0.08;
+        }
+
+        ctx.fillStyle = `hsl(${p.hue}, 100%, 55%)`;
+        ctx.beginPath();
+        ctx.arc(x, y, p.size, 0, Math.PI * 2);
+        ctx.fill();
+      });
+
+      // Event Horizon
+      ctx.beginPath();
+      ctx.arc(cx, cy, 75, 0, Math.PI * 2);
+      ctx.fillStyle = '#000000';
+      ctx.shadowBlur = isMouseDown ? 70 : 45;
+      ctx.shadowColor = '#ff6600';
+      ctx.fill();
+      ctx.shadowBlur = 0;
+    }
+
+    /* 5. CYBER STORM (Vector Wind Fields & Concussive Lightning) */
+    let cyberRain = [];
+    let cyberLightning = [];
+    let cyberSplashes = [];
+
+    function initCyberpunkPhysics() {
+      cyberRain = [];
+      for (let i = 0; i < 260; i++) {
+        cyberRain.push({
+          x: Math.random() * canvas.width,
+          y: Math.random() * canvas.height,
+          l: Math.random() * 20 + 15,
+          vx: -2,
+          vy: Math.random() * 10 + 14
+        });
+      }
+    }
+
+    function renderCyberpunk() {
+      ctx.fillStyle = 'rgba(3, 8, 20, 0.32)';
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+      cyberLightning.forEach((bolt, idx) => {
+        ctx.strokeStyle = '#ffffff';
+        ctx.lineWidth = 2.5;
+        ctx.shadowBlur = 20;
+        ctx.shadowColor = '#00e5ff';
+        ctx.beginPath();
+        ctx.moveTo(bolt.x, bolt.y);
+
+        let curX = bolt.x;
+        let curY = bolt.y;
+        while (curY < canvas.height) {
+          curX += (Math.random() - 0.5) * 35;
+          curY += Math.random() * 40 + 20;
+          ctx.lineTo(curX, curY);
+        }
+        ctx.stroke();
+        ctx.shadowBlur = 0;
+        bolt.life -= 0.15;
+        if (bolt.life <= 0) cyberLightning.splice(idx, 1);
+      });
+
+      ctx.strokeStyle = '#00e5ff';
+      ctx.lineWidth = 1.5;
+
+      cyberRain.forEach(r => {
+        let dx = r.x - mouse.x;
+        let dy = r.y - mouse.y;
+        let dist = Math.sqrt(dx * dx + dy * dy);
+
+        if (dist < 120) {
+          r.vx += (dx / dist) * 2 + (mouse.vx * 0.1);
+          r.vy += (dy / dist) * 2;
+        }
+
+        r.vx *= 0.96;
+        r.x += r.vx;
+        r.y += r.vy;
+
+        ctx.beginPath();
+        ctx.moveTo(r.x, r.y);
+        ctx.lineTo(r.x + r.vx * 2, r.y + r.l);
+        ctx.stroke();
+
+        if (r.y > canvas.height) {
+          r.y = -30;
+          r.x = Math.random() * canvas.width;
+          r.vx = -2;
+        }
+      });
+    }
+
+    /* 6. HYPERSPACE (Interactive 3D Warp Field Steering) */
+    let hyperspaceStars = [];
+    let hyperspaceBoost = 1.0;
+
+    function initHyperspacePhysics() {
+      hyperspaceStars = [];
+      for (let i = 0; i < 450; i++) {
+        hyperspaceStars.push({
+          x: (Math.random() - 0.5) * canvas.width * 2,
+          y: (Math.random() - 0.5) * canvas.height * 2,
+          z: Math.random() * canvas.width
+        });
+      }
+    }
+
+    function renderHyperspace() {
+      ctx.fillStyle = 'rgba(2, 0, 8, 0.35)';
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+      let cx = canvas.width / 2 + (mouse.x - canvas.width / 2) * 0.15;
+      let cy = canvas.height / 2 + (mouse.y - canvas.height / 2) * 0.15;
+
+      hyperspaceBoost *= 0.96;
+      let currentSpeed = 24 + (hyperspaceBoost * 35) + (isMouseDown ? 40 : 0);
+
+      ctx.lineWidth = isMouseDown ? 3.5 : 2;
+
+      hyperspaceStars.forEach(s => {
+        s.z -= currentSpeed;
+        if (s.z <= 0) {
+          s.z = canvas.width;
+          s.x = (Math.random() - 0.5) * canvas.width * 2;
+          s.y = (Math.random() - 0.5) * canvas.height * 2;
+        }
+
+        let k = 250 / s.z;
+        let px = s.x * k + cx;
+        let py = s.y * k + cy;
+
+        let prevK = 250 / (s.z + currentSpeed * 1.5);
+        let prevPX = s.x * prevK + cx;
+        let prevPY = s.y * prevK + cy;
+
+        ctx.strokeStyle = '#9d00ff';
+        ctx.beginPath();
+        ctx.moveTo(prevPX, prevPY);
+        ctx.lineTo(px, py);
+        ctx.stroke();
+      });
+    }
+
+    /* 7. ARCADE VAPOR (Rigid-body Kinetic Polygon Physics) */
+    let vaporBodies = [];
+
+    function initVaporPhysics() {
+      vaporBodies = [];
+      for (let i = 0; i < 25; i++) {
+        vaporBodies.push({
+          x: Math.random() * canvas.width,
+          y: Math.random() * canvas.height,
+          vx: (Math.random() - 0.5) * 2,
+          vy: (Math.random() - 0.5) * 2,
+          size: Math.random() * 26 + 20,
+          angle: Math.random() * Math.PI,
+          rotSpeed: (Math.random() - 0.5) * 0.03
+        });
+      }
+    }
+
+    function renderVapor() {
+      ctx.fillStyle = 'rgba(12, 0, 25, 0.28)';
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+      vaporBodies.forEach(b => {
+        let dx = b.x - mouse.x;
+        let dy = b.y - mouse.y;
+        let dist = Math.sqrt(dx * dx + dy * dy);
+
+        if (dist < 150) {
+          let push = (150 - dist) / 25;
+          b.vx += (dx / dist) * push;
+          b.vy += (dy / dist) * push;
+          b.rotSpeed += 0.005;
+        }
+
+        b.vx *= 0.98;
+        b.vy *= 0.98;
+        b.x += b.vx;
+        b.y += b.vy;
+        b.angle += b.rotSpeed;
+
+        if (b.x < 0 || b.x > canvas.width) b.vx *= -1;
+        if (b.y < 0 || b.y > canvas.height) b.vy *= -1;
+
+        ctx.save();
+        ctx.translate(b.x, b.y);
+        ctx.rotate(b.angle);
+        ctx.strokeStyle = '#ff71ce';
+        ctx.lineWidth = 2.5;
+        ctx.strokeRect(-b.size / 2, -b.size / 2, b.size, b.size);
+        ctx.restore();
+      });
+    }
+
+    /* 8. STEALTH OBSIDIAN (Elastic Lattice & Surface Tension Waves) */
+    let stealthGrid = [];
+    let stealthShockwaves = [];
+    const gridSize = 45;
+
+    function initStealthPhysics() {
+      stealthGrid = [];
+      for (let x = 0; x <= canvas.width + gridSize; x += gridSize) {
+        for (let y = 0; y <= canvas.height + gridSize; y += gridSize) {
+          stealthGrid.push({
+            originX: x,
+            originY: y,
+            x: x,
+            y: y,
+            vx: 0,
+            vy: 0
+          });
+        }
+      }
+    }
+
+    function renderStealth() {
+      ctx.fillStyle = "#08090d";
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+      for (let s = stealthShockwaves.length - 1; s >= 0; s--) {
+        let sw = stealthShockwaves[s];
+        sw.r += 10;
+        sw.alpha -= 0.02;
+        ctx.beginPath();
+        ctx.arc(sw.x, sw.y, sw.r, 0, Math.PI * 2);
+        ctx.strokeStyle = `rgba(136, 146, 176, ${Math.max(0, sw.alpha)})`;
+        ctx.lineWidth = 2;
+        ctx.stroke();
+        if (sw.alpha <= 0) stealthShockwaves.splice(s, 1);
+      }
+
+      ctx.fillStyle = "rgba(136, 146, 176, 0.45)";
+
+      stealthGrid.forEach(p => {
+        let dx = mouse.x - p.x;
+        let dy = mouse.y - p.y;
+        let dist = Math.sqrt(dx * dx + dy * dy);
+
+        if (dist < 130) {
+          let push = (130 - dist) / 12;
+          p.vx -= (dx / dist) * push;
+          p.vy -= (dy / dist) * push;
+        }
+
+        // Return spring
+        p.vx += (p.originX - p.x) * 0.08;
+        p.vy += (p.originY - p.y) * 0.08;
+
+        p.vx *= 0.88;
+        p.vy *= 0.88;
+
+        p.x += p.vx;
+        p.y += p.vy;
+
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, 1.8, 0, Math.PI * 2);
+        ctx.fill();
+      });
+    }
+
+    function masterRenderLoop() {
+      requestAnimationFrame(masterRenderLoop);
+      if (activeTheme === 'dynamic') renderDynamic();
+      else if (activeTheme === 'matrix') renderMatrix();
+      else if (activeTheme === 'synthwave') renderSynthwave();
+      else if (activeTheme === 'blackhole') renderBlackhole();
+      else if (activeTheme === 'cyberpunk') renderCyberpunk();
+      else if (activeTheme === 'hyperspace') renderHyperspace();
+      else if (activeTheme === 'vapor') renderVapor();
+      else if (activeTheme === 'stealth') renderStealth();
+    }
+
+    window.addEventListener('resize', () => {
+      canvas.width = window.innerWidth;
+      canvas.height = window.innerHeight;
+      initDynamicPhysics();
+    });
+
+    // Initialize CakesV2
+    initDynamicPhysics();
+    renderPlaces();
+    masterRenderLoop();
+  </script>
+</body>
+</html>
